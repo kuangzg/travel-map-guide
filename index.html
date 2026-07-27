@@ -1,0 +1,2292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>通用旅游地图导览</title>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --muted: #647174;
+      --line: #dce6e2;
+      --paper: #f5f5f0;
+      --panel: #ffffff;
+      --panel-soft: #f8fbf8;
+      --lake: #0891b2;
+      --grass: #24735a;
+      --grass-deep: #174c3e;
+      --road: #c87931;
+      --sand: #f3eadb;
+      --warn: #b45309;
+      --night: #17283b;
+      --ring: #0891b2;
+      --shadow: 0 22px 60px rgba(15, 23, 42, .12);
+      --shadow-soft: 0 12px 34px rgba(15, 23, 42, .09);
+      --radius: 8px;
+      --map-label-scale: 1;
+      --map-waypoint-scale: 1;
+      --map-label-opacity: 1;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        linear-gradient(135deg, rgba(8, 145, 178, .1), transparent 32%),
+        linear-gradient(180deg, rgba(239, 246, 242, .96), rgba(245, 245, 240, .64) 46%),
+        var(--paper);
+    }
+
+    button, a { font: inherit; }
+
+    button {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    button:focus-visible,
+    a:focus-visible {
+      outline: 3px solid rgba(8, 145, 178, .42);
+      outline-offset: 3px;
+    }
+
+    .app {
+      height: 100dvh;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 10px 24px;
+      border-bottom: 1px solid rgba(21, 32, 34, .08);
+      background: rgba(245, 245, 240, .86);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    .title-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(18px, 2vw, 24px);
+      line-height: 1.12;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+
+    .subtitle {
+      display: none;
+    }
+
+    .trip-meta {
+      display: grid;
+      grid-template-columns: repeat(3, auto);
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .summary-rail {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      padding: 3px;
+      border: 0;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .38);
+      box-shadow: inset 0 0 0 1px rgba(23, 76, 62, .08);
+    }
+
+    .summary-rail.compact {
+      justify-self: end;
+      width: min(720px, 100%);
+    }
+
+    .pill {
+      min-height: 30px;
+      min-width: 0;
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid rgba(23, 76, 62, .08);
+      border-radius: 9px;
+      padding: 5px 10px;
+      color: #23373a;
+      background: rgba(255, 255, 255, .68);
+      white-space: nowrap;
+      font-size: 12px;
+      overflow: hidden;
+    }
+
+    .pill b {
+      min-width: 34px;
+      flex: 0 0 auto;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(8, 145, 178, .1);
+      color: var(--night);
+      font-size: 13px;
+      line-height: 1.15;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pill span {
+      min-width: 0;
+      color: #52666a;
+      font-size: 12px;
+      line-height: 1.2;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    main {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: minmax(720px, 1fr) 430px;
+      gap: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .map-shell, .day-panel {
+      background: rgba(255, 255, 255, .9);
+      border: 1px solid rgba(23, 76, 62, .12);
+      box-shadow: var(--shadow);
+    }
+
+    .map-shell { border-right: 0; }
+
+    .map-shell {
+      overflow: hidden;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(var(--day-count, 9), minmax(64px, 1fr));
+      gap: 8px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f7faf7);
+    }
+
+    .timeline-progress {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      top: 46px;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(36, 115, 90, .42), rgba(8, 145, 178, .22));
+      pointer-events: none;
+    }
+
+    .keyboard-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 24px;
+      padding: 3px 6px;
+      border: 1px solid rgba(8, 145, 178, .12);
+      border-radius: 999px;
+      background: rgba(231, 244, 240, .46);
+      color: #2d5b5f;
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      opacity: .78;
+    }
+
+    .keyboard-hint kbd {
+      min-width: 20px;
+      padding: 2px 5px;
+      border: 1px solid rgba(15, 23, 42, .14);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      background: #fff;
+      color: var(--night);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+      box-shadow: inset 0 -1px 0 rgba(15, 23, 42, .06);
+    }
+
+    .keyboard-hint .shortcut-divider {
+      color: rgba(45, 91, 95, .58);
+      font-weight: 800;
+    }
+
+    .guide-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      min-height: 28px;
+      padding: 3px;
+      border: 1px solid rgba(8, 145, 178, .16);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .68);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .52);
+      flex: 0 0 auto;
+    }
+
+    .guide-option {
+      min-height: 22px;
+      border: 0;
+      border-radius: 999px;
+      padding: 3px 10px;
+      background: transparent;
+      color: #486368;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+      transition: background-color .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+
+    .guide-option:hover {
+      color: var(--grass-deep);
+      background: rgba(8, 145, 178, .08);
+    }
+
+    .guide-option.active {
+      color: #fff;
+      background: linear-gradient(180deg, var(--grass), var(--grass-deep));
+      box-shadow: 0 6px 14px rgba(23, 76, 62, .18);
+    }
+
+    .day-btn {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 11px 8px 10px;
+      background: rgba(255, 255, 255, .96);
+      color: #284044;
+      cursor: pointer;
+      min-height: 68px;
+      transition: background-color .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease, transform .2s ease;
+      z-index: 1;
+    }
+
+    .day-btn span {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .day-btn strong {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 34px;
+      height: 26px;
+      border-radius: 999px;
+      background: #eef6f1;
+      color: var(--grass-deep);
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .day-btn:hover {
+      border-color: rgba(8, 145, 178, .32);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .08);
+    }
+
+    .day-btn:active { transform: translateY(1px); }
+
+    .day-btn.active {
+      color: #fff;
+      border-color: var(--grass-deep);
+      background: linear-gradient(180deg, var(--grass), var(--grass-deep));
+      box-shadow: 0 14px 28px rgba(23, 76, 62, .22);
+      transform: translateY(-1px);
+    }
+
+    .day-btn.active strong {
+      color: var(--grass-deep);
+      background: #fff;
+    }
+
+    .day-btn.active span { color: rgba(255,255,255,.82); }
+
+    .map-wrap {
+      position: relative;
+      min-height: 0;
+      background: #edf4f0;
+    }
+
+    #amap {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .map-chip {
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      z-index: 2;
+      max-width: min(440px, calc(100% - 32px));
+      padding: 12px 14px;
+      border: 1px solid rgba(23, 76, 62, .12);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .9);
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(10px);
+    }
+
+    .map-chip span {
+      display: block;
+      color: var(--grass-deep);
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .map-chip b {
+      display: block;
+      color: var(--night);
+      font-size: 15px;
+      line-height: 1.35;
+    }
+
+    .map-status {
+      position: absolute;
+      left: 16px;
+      top: 88px;
+      z-index: 3;
+      max-width: min(480px, calc(100% - 32px));
+      padding: 9px 12px;
+      border: 1px solid rgba(21,32,34,.12);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.92);
+      color: #314a4d;
+      font-size: 12px;
+      line-height: 1.45;
+      box-shadow: 0 10px 26px rgba(28, 45, 48, .12);
+    }
+
+    .map-status.ready { display: none; }
+
+    .map-zoom-controls {
+      position: absolute;
+      right: 16px;
+      top: 68px;
+      z-index: 4;
+      display: grid;
+      gap: 6px;
+    }
+
+    .map-zoom-controls button {
+      width: 34px;
+      height: 34px;
+      border: 1px solid rgba(23, 76, 62, .16);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .94);
+      color: var(--grass-deep);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, .12);
+      cursor: pointer;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1;
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+
+    .map-zoom-controls button:hover {
+      border-color: rgba(8, 145, 178, .34);
+      box-shadow: 0 14px 26px rgba(15, 23, 42, .16);
+      transform: translateY(-1px);
+    }
+
+    .map-zoom-controls button:active {
+      transform: translateY(1px);
+    }
+
+    .amap-marker-bubble {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 7px 12px;
+      border: 2px solid rgba(23, 76, 62, .88);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .96);
+      color: #1d3235;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, .18);
+      white-space: nowrap;
+      cursor: pointer;
+      opacity: var(--map-label-opacity, 1);
+      transform: translateY(var(--marker-lift, 0)) scale(var(--map-label-scale, 1));
+      transform-origin: center;
+      transition: transform .2s ease, opacity .2s ease, min-height .2s ease, padding .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+
+    .amap-marker-bubble span {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .amap-marker-bubble.route-muted {
+      display: none;
+    }
+
+    .amap-marker-bubble.active {
+      --marker-lift: -2px;
+      border-color: var(--road);
+      box-shadow: 0 16px 30px rgba(196, 121, 49, .28);
+    }
+
+    .amap-marker-bubble.zoom-compact {
+      min-height: 30px;
+      padding: 6px 10px;
+    }
+
+    .amap-marker-bubble.zoom-compact span {
+      font-size: 11px;
+    }
+
+    .amap-marker-bubble.zoom-distant {
+      min-width: 24px;
+      min-height: 24px;
+      padding: 0;
+    }
+
+    .amap-marker-bubble.zoom-distant span {
+      display: none;
+    }
+
+    .amap-marker-bubble.zoom-distant::after {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--grass-deep);
+    }
+
+    .map-legend {
+      position: absolute;
+      left: 16px;
+      bottom: 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      max-width: calc(100% - 32px);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.92);
+      border: 1px solid rgba(21,32,34,.1);
+      font-size: 12px;
+      color: #314a4d;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--grass);
+    }
+
+    .dot.alt { background: var(--road); }
+    .dot.lake { background: var(--lake); }
+
+    .global-notes {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      z-index: 5;
+      width: min(320px, calc(100% - 32px));
+    }
+
+    .global-notes summary {
+      min-height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border: 1px solid rgba(196, 121, 49, .2);
+      border-radius: 999px;
+      background: rgba(255, 253, 248, .94);
+      color: #553819;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .11);
+      backdrop-filter: blur(10px);
+      cursor: pointer;
+      list-style: none;
+      font-size: 12px;
+      font-weight: 800;
+      user-select: none;
+    }
+
+    .global-notes summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .global-notes summary::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      margin-left: auto;
+      border-right: 2px solid #9b5b24;
+      border-bottom: 2px solid #9b5b24;
+      transform: rotate(45deg) translateY(-1px);
+      transition: transform .18s ease;
+    }
+
+    .global-notes[open] summary::after {
+      transform: rotate(225deg) translateY(-1px);
+    }
+
+    .global-notes summary b {
+      min-width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: #fff1df;
+      color: #8a4d1f;
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .global-note-list {
+      margin-top: 8px;
+      display: grid;
+      gap: 8px;
+      max-height: min(330px, calc(100vh - 280px));
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid rgba(196, 121, 49, .16);
+      border-radius: var(--radius);
+      background: rgba(255, 253, 248, .96);
+      box-shadow: 0 18px 36px rgba(15, 23, 42, .13);
+      backdrop-filter: blur(12px);
+    }
+
+    .global-note {
+      position: relative;
+      padding: 10px 10px 10px 13px;
+      border: 1px solid rgba(196, 121, 49, .18);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .62);
+    }
+
+    .global-note::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 10px;
+      bottom: 10px;
+      width: 3px;
+      border-radius: 999px;
+      background: var(--road);
+    }
+
+    .global-note b { display: block; font-size: 13px; color: #48362a; }
+    .global-note span { display: block; margin-top: 5px; font-size: 12px; color: #6b5d53; line-height: 1.5; }
+
+    .spot-detail-card {
+      position: absolute;
+      right: 16px;
+      bottom: 72px;
+      z-index: 6;
+      width: min(340px, calc(100% - 32px));
+      overflow: hidden;
+      border: 1px solid rgba(23, 76, 62, .16);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .96);
+      box-shadow: 0 22px 48px rgba(15, 23, 42, .18);
+      backdrop-filter: blur(14px);
+    }
+
+    .spot-detail-card[hidden] {
+      display: none;
+    }
+
+    .spot-detail-image {
+      min-height: 116px;
+      display: flex;
+      align-items: flex-end;
+      padding: 12px;
+      color: #fff;
+      background:
+        linear-gradient(180deg, rgba(15, 23, 42, 0), rgba(15, 23, 42, .58)),
+        linear-gradient(135deg, #0f766e, #38bdf8);
+    }
+
+    .spot-detail-image span {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, .38);
+      font-size: 12px;
+      font-weight: 800;
+      backdrop-filter: blur(8px);
+    }
+
+    .spot-detail-body {
+      padding: 12px 14px 14px;
+    }
+
+    .spot-detail-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .spot-detail-head h3 {
+      margin: 0;
+      color: var(--night);
+      font-size: 17px;
+      line-height: 1.25;
+    }
+
+    .spot-detail-close {
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(21, 32, 34, .12);
+      border-radius: 50%;
+      background: #f8fbf8;
+      color: #385156;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .spot-detail-close:hover {
+      border-color: rgba(8, 145, 178, .3);
+      color: var(--grass-deep);
+    }
+
+    .spot-detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .spot-detail-meta span {
+      padding: 4px 7px;
+      border-radius: 999px;
+      background: #eef6f1;
+      color: var(--grass-deep);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .spot-detail-text {
+      margin: 0;
+      color: #314a4d;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .spot-detail-list {
+      display: grid;
+      gap: 6px;
+      margin: 10px 0 0;
+      padding-left: 16px;
+      color: #425d61;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .day-panel {
+      min-height: 0;
+      padding: 0;
+      display: grid;
+      grid-template-rows: auto auto auto 1fr auto auto;
+      gap: 0;
+      position: relative;
+      overflow-x: hidden;
+      overflow-y: auto;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,251,248,.92)),
+        var(--panel);
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 20px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .72);
+    }
+
+    .kicker {
+      margin: 0 0 6px;
+      font-size: 13px;
+      color: var(--lake);
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .date-chip {
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #e7f4f0;
+      color: var(--grass-deep);
+      font-size: 13px;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+
+    .route-line {
+      display: none;
+    }
+
+    .stage-list {
+      display: grid;
+      gap: 8px;
+      color: #2f4548;
+      line-height: 1.5;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-section {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stage-item {
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      align-items: center;
+      gap: 9px;
+      min-height: 40px;
+      padding: 7px 9px;
+      border: 1px solid rgba(220, 230, 226, .9);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .76);
+    }
+
+    .stage-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      background: #e7f4f0;
+      color: var(--grass-deep);
+      font-size: 12px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stage-name {
+      color: var(--night);
+      font-weight: 700;
+    }
+
+    .route-detail-list {
+      display: grid;
+      gap: 8px;
+      max-height: 252px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .route-detail {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 10px;
+      padding: 10px;
+      border: 1px solid rgba(220, 230, 226, .9);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, .72);
+    }
+
+    .route-detail-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--sand);
+      color: #7c4a17;
+      font-weight: 800;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .route-detail-main {
+      min-width: 0;
+    }
+
+    .route-detail-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--night);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .route-detail-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .route-detail-note {
+      margin-top: 6px;
+      color: #3a5559;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .route-detail.route-detail-active {
+      border-color: rgba(220, 38, 38, .18);
+      background: #fff7ed;
+      box-shadow: inset 3px 0 0 rgba(220, 38, 38, .72);
+    }
+
+    .route-detail.route-detail-active .route-detail-index {
+      background: #dc2626;
+      color: #fff;
+    }
+
+    .route-waypoint {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-width: 28px;
+      max-width: 148px;
+      min-height: 28px;
+      padding: 3px 9px 3px 3px;
+      border: 1px solid rgba(196, 121, 49, .48);
+      border-radius: 999px;
+      background: rgba(255, 253, 248, .94);
+      color: #7c4a17;
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .12);
+      white-space: nowrap;
+      opacity: var(--map-label-opacity, 1);
+      transform: scale(var(--map-waypoint-scale, 1));
+      transform-origin: center;
+      transition: transform .2s ease, opacity .2s ease, min-width .2s ease, height .2s ease, padding .2s ease, box-shadow .2s ease;
+    }
+
+    .route-waypoint.spot-enabled {
+      border-color: rgba(8, 145, 178, .52);
+      box-shadow: 0 8px 18px rgba(8, 145, 178, .13);
+      cursor: pointer;
+    }
+
+    .route-waypoint.spot-enabled:hover {
+      transform: scale(calc(var(--map-waypoint-scale, 1) * 1.04));
+      border-color: rgba(8, 145, 178, .78);
+    }
+
+    .route-waypoint.route-waypoint-active {
+      border-color: rgba(220, 38, 38, .82);
+      background: #fff7ed;
+      color: #9a3412;
+      box-shadow: 0 12px 26px rgba(220, 38, 38, .18);
+      transform: scale(calc(var(--map-waypoint-scale, 1) * 1.08));
+    }
+
+    .route-waypoint.route-waypoint-active .route-waypoint-index {
+      background: #dc2626;
+      color: #fff;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, .9);
+    }
+
+    .route-waypoint.route-waypoint-active .route-waypoint-label {
+      color: #7c2d12;
+    }
+
+    .route-waypoint-info {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .route-waypoint-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      color: #7c4a17;
+      font-size: 12px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+      box-shadow: inset 0 0 0 1px rgba(196, 121, 49, .2);
+    }
+
+    .route-waypoint-label {
+      display: block;
+      min-width: 0;
+      max-width: 96px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #553819;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.2;
+    }
+
+    .route-waypoint.zoom-compact {
+      min-width: 26px;
+      min-height: 26px;
+      max-width: 118px;
+      padding: 2px 7px 2px 2px;
+      gap: 5px;
+    }
+
+    .route-waypoint.zoom-compact .route-waypoint-index {
+      width: 21px;
+      height: 21px;
+      font-size: 11px;
+    }
+
+    .route-waypoint.zoom-compact .route-waypoint-label {
+      max-width: 74px;
+      font-size: 11px;
+    }
+
+    .route-waypoint.zoom-distant {
+      min-width: 22px;
+      min-height: 22px;
+      padding: 0;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, .1);
+    }
+
+    .route-waypoint.zoom-distant .route-waypoint-index {
+      width: 22px;
+      height: 22px;
+      font-size: 11px;
+    }
+
+    .route-waypoint.zoom-distant .route-waypoint-label {
+      display: none;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric {
+      border: 1px solid rgba(220, 230, 226, .86);
+      border-radius: var(--radius);
+      padding: 10px 11px;
+      background: rgba(255, 255, 255, .62);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 5px;
+      font-weight: 700;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 15px;
+      line-height: 1.35;
+      color: var(--night);
+    }
+
+    .section-title {
+      margin: 2px 0 8px;
+      color: #1d3437;
+      font-size: 14px;
+      letter-spacing: .02em;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 18px;
+      color: #334b4e;
+      line-height: 1.66;
+    }
+
+    li + li { margin-top: 4px; }
+
+    .alert {
+      margin: 16px 18px 0;
+      border: 1px solid rgba(180, 93, 46, .24);
+      border-left: 4px solid var(--warn);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: #603a27;
+      background: #fff8ef;
+      line-height: 1.55;
+    }
+
+    .links {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 16px 18px 18px;
+    }
+
+    .action {
+      min-height: 46px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      text-decoration: none;
+      color: #fff;
+      background: linear-gradient(180deg, var(--night), #101b29);
+      text-align: center;
+      font-weight: 750;
+      transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease;
+    }
+
+    .action:hover {
+      box-shadow: 0 12px 26px rgba(23, 40, 59, .18);
+      transform: translateY(-1px);
+    }
+
+    .action:active { transform: translateY(1px); }
+
+    .action[aria-disabled="true"] {
+      opacity: .62;
+      pointer-events: none;
+    }
+
+    .action.secondary {
+      color: #263e42;
+      background: #eef5f4;
+      border: 1px solid var(--line);
+    }
+
+    @media (max-width: 1180px) {
+      .topbar {
+        grid-template-columns: minmax(220px, auto) minmax(0, 1fr);
+        align-items: center;
+      }
+      .summary-rail {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        width: 100%;
+      }
+      main { grid-template-columns: 1fr; }
+      .app {
+        height: auto;
+        min-height: 100dvh;
+        overflow: visible;
+      }
+      main {
+        overflow: visible;
+      }
+      .map-shell {
+        border-right: 1px solid rgba(23, 76, 62, .12);
+        border-bottom: 0;
+        min-height: 560px;
+      }
+      .map-wrap { min-height: 460px; }
+      #amap { min-height: 460px; }
+      .day-panel {
+        position: static;
+        min-height: auto;
+        max-height: 70dvh;
+        overflow-y: auto;
+      }
+    }
+
+    @media (max-width: 760px) {
+      header { padding: 8px 16px; }
+      .topbar {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      h1 { font-size: 18px; }
+      main { padding: 0; }
+      .summary-rail {
+        justify-self: stretch;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .pill {
+        min-height: 32px;
+        padding: 5px 7px;
+        gap: 5px;
+      }
+      .pill span { display: none; }
+      .timeline {
+        grid-template-columns: repeat(3, 1fr);
+        padding: 12px;
+      }
+      .timeline-progress { display: none; }
+      .title-line {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .keyboard-hint {
+        max-width: 100%;
+        overflow: hidden;
+      }
+      .map-wrap { min-height: 420px; }
+      #amap { min-height: 420px; }
+      .map-chip {
+        left: 12px;
+        right: 12px;
+        max-width: none;
+      }
+      .map-zoom-controls {
+        right: 12px;
+        top: 66px;
+      }
+      .global-notes {
+        right: 12px;
+        top: 12px;
+        width: min(320px, calc(100% - 24px));
+      }
+      .global-note-list { max-height: 260px; }
+      .spot-detail-card {
+        left: 12px;
+        right: 12px;
+        bottom: 76px;
+        width: auto;
+      }
+      .spot-detail-image { min-height: 94px; }
+      .metric-grid { grid-template-columns: 1fr; }
+      .links { grid-template-columns: 1fr; }
+      .amap-marker-bubble {
+        min-height: 30px;
+        padding: 6px 9px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+  <script src="./data/xinjiang-9-day-guide-data.js"></script>
+  <script src="./data/yunnan-8-day-guide-data.js"></script>
+  <script src="./data/gansu-9-day-guide-data.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="topbar">
+        <div class="title-block" id="titleBlock" aria-label="旅游地图导览">
+          <div class="title-line">
+            <h1 id="guideTitle">旅游地图导览</h1>
+            <span class="keyboard-hint" id="keyboardHint" aria-label="键盘：左右箭头按序号切换，Home 和 End 跳到首尾序号" title="键盘：左右箭头按序号切换，Home / End 跳到首尾序号">
+              <kbd>←</kbd><kbd>→</kbd>
+              <span class="shortcut-divider">/</span>
+              <kbd>Home</kbd><kbd>End</kbd>
+            </span>
+            <div class="guide-switch" id="guideSwitch" aria-label="切换旅游规划"></div>
+          </div>
+          <p class="subtitle" id="guideSubtitle"></p>
+        </div>
+        <div class="summary-rail compact" id="summaryRail" aria-label="行程摘要"></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="map-shell" aria-label="路线地图">
+        <nav class="timeline" id="timeline" aria-label="选择行程天数">
+          <span class="timeline-progress" aria-hidden="true"></span>
+        </nav>
+
+        <div class="map-wrap">
+          <div id="amap" role="img" aria-label="旅行路线高德地图"></div>
+          <div class="map-chip" aria-live="polite">
+            <span id="mapChipLabel">当前日程</span>
+            <b id="mapChipTitle">请选择行程</b>
+          </div>
+          <div class="map-status" id="mapStatus">正在加载高德地图。如果长时间不显示，请检查网络或高德 Web 服务 key 权限。</div>
+          <div class="map-zoom-controls" aria-label="地图缩放">
+            <button type="button" id="zoomInButton" aria-label="放大地图" title="放大地图">+</button>
+            <button type="button" id="zoomOutButton" aria-label="缩小地图" title="缩小地图">−</button>
+          </div>
+
+          <div class="map-legend" aria-label="地图图例">
+            <span class="legend-item"><i class="dot lake"></i>湖泊/景区</span>
+            <span class="legend-item"><i class="dot"></i>全部详细路线</span>
+            <span class="legend-item"><i class="dot alt"></i>当前行程路线</span>
+          </div>
+
+          <details class="global-notes" id="globalNotes">
+            <summary><span id="globalNotesTitle">全局提醒</span> <b id="globalNotesCount">0</b></summary>
+            <div class="global-note-list" id="globalNoteList" aria-label="全局注意点"></div>
+          </details>
+
+          <section class="spot-detail-card" id="spotDetailCard" aria-live="polite" hidden>
+            <div class="spot-detail-image" id="spotDetailImage"><span id="spotDetailPhotoLabel"></span></div>
+            <div class="spot-detail-body">
+              <div class="spot-detail-head">
+                <h3 id="spotDetailTitle"></h3>
+                <button class="spot-detail-close" type="button" id="spotDetailClose" aria-label="关闭景点详情">×</button>
+              </div>
+              <div class="spot-detail-meta" id="spotDetailMeta"></div>
+              <p class="spot-detail-text" id="spotDetailText"></p>
+              <ul class="spot-detail-list" id="spotDetailList"></ul>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="day-panel" aria-live="polite">
+        <div class="panel-head">
+          <div>
+            <p class="kicker" id="dayKicker"></p>
+            <h2 id="dayTitle"></h2>
+          </div>
+          <span class="date-chip" id="dayDate"></span>
+        </div>
+
+        <div class="route-line" id="routeLine"></div>
+        <div class="stage-list" id="stageList" aria-label="当日路线节点"></div>
+
+        <div class="panel-section">
+          <h3 class="section-title">当日路程拆解</h3>
+          <div class="route-detail-list" id="routeDetailList" aria-label="当日路程拆解"></div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric"><span>住宿建议</span><b id="stay"></b></div>
+          <div class="metric"><span>当日节奏</span><b id="pace"></b></div>
+          <div class="metric"><span>高光体验</span><b id="highlight"></b></div>
+          <div class="metric"><span>驾驶重点</span><b id="drive"></b></div>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="section-title">导览提示</h3>
+          <ul id="tips"></ul>
+        </div>
+
+        <div class="alert" id="warning"></div>
+
+        <div class="links">
+          <a class="action" id="mapLink" target="_blank" rel="noreferrer">打开当前点位</a>
+          <a class="action secondary" href="#timeline">回到天数选择</a>
+        </div>
+      </aside>
+    </main>
+
+  </div>
+
+  <script>
+    const guideRegistry = window.TRAVEL_GUIDES || { xinjiang: window.TRAVEL_GUIDE_DATA };
+    const requestedGuideKey = new URLSearchParams(window.location.search).get('guide');
+    const guideKeys = Object.keys(guideRegistry).filter(key => Boolean(guideRegistry[key]));
+    const currentGuideKey = guideRegistry[requestedGuideKey] ? requestedGuideKey : (guideRegistry.xinjiang ? 'xinjiang' : guideKeys[0]);
+    const guideData = guideRegistry[currentGuideKey] || {};
+    const guideMeta = guideData.meta || {};
+    const days = guideData.days || [];
+    const pinPoints = guideData.pinPoints || [];
+    const routePath = guideData.routePath || [];
+    const routeSegments = guideData.routeSegments || {};
+    const dailyRoutes = guideData.dailyRoutes || {};
+    const routePalette = [
+      { color: '#2563eb', baseOpacity: 0.62, activeOpacity: 1 },
+      { color: '#dc2626', baseOpacity: 0.60, activeOpacity: 1 },
+      { color: '#7c3aed', baseOpacity: 0.60, activeOpacity: 1 },
+      { color: '#c026d3', baseOpacity: 0.58, activeOpacity: 1 },
+      { color: '#4f46e5', baseOpacity: 0.60, activeOpacity: 1 },
+      { color: '#be123c', baseOpacity: 0.60, activeOpacity: 1 },
+      { color: '#9333ea', baseOpacity: 0.58, activeOpacity: 1 },
+      { color: '#1d4ed8', baseOpacity: 0.60, activeOpacity: 1 },
+      { color: '#0f766e', baseOpacity: 0.58, activeOpacity: 1 }
+    ];
+    const routeCasingColor = '#fffdf7';
+    const scenicWaypointDetails = guideData.scenicWaypointDetails || {};
+    const PIN_TOUCH_DISTANCE = 0.006;
+    const AMAP_KEY = '8f3fa554dc15a74d1442d5bc21071927';
+    const DEFAULT_MAP_ZOOM = 7;
+    const DEFAULT_MAP_STYLE = 'amap://styles/normal';
+    const NAVIGATION_REQUEST_DELAY = 1100;
+
+    const timeline = document.getElementById('timeline');
+    const titleBlock = document.getElementById('titleBlock');
+    const guideTitle = document.getElementById('guideTitle');
+    const guideSubtitle = document.getElementById('guideSubtitle');
+    const guideSwitch = document.getElementById('guideSwitch');
+    const summaryRail = document.getElementById('summaryRail');
+    const globalNotes = document.getElementById('globalNotes');
+    const globalNotesTitle = document.getElementById('globalNotesTitle');
+    const globalNotesCount = document.getElementById('globalNotesCount');
+    const globalNoteList = document.getElementById('globalNoteList');
+    const amapElement = document.getElementById('amap');
+    const mapStatus = document.getElementById('mapStatus');
+    const mapChipLabel = document.getElementById('mapChipLabel');
+    const mapChipTitle = document.getElementById('mapChipTitle');
+    const zoomInButton = document.getElementById('zoomInButton');
+    const zoomOutButton = document.getElementById('zoomOutButton');
+    const stageList = document.getElementById('stageList');
+    const routeDetailList = document.getElementById('routeDetailList');
+    const spotDetailCard = document.getElementById('spotDetailCard');
+    const spotDetailImage = document.getElementById('spotDetailImage');
+    const spotDetailPhotoLabel = document.getElementById('spotDetailPhotoLabel');
+    const spotDetailTitle = document.getElementById('spotDetailTitle');
+    const spotDetailMeta = document.getElementById('spotDetailMeta');
+    const spotDetailText = document.getElementById('spotDetailText');
+    const spotDetailList = document.getElementById('spotDetailList');
+    const spotDetailClose = document.getElementById('spotDetailClose');
+    const markers = new Map();
+    const segmentLines = new Map();
+    const dailyRouteCasings = new Map();
+    const dailyRouteLines = new Map();
+    let drivingPlanner = null;
+    let waypointMarkers = [];
+    let map = null;
+    let active = 0;
+    let activeWaypointIndex = 0;
+    let activeSpotName = '';
+
+    function getGuideSwitchLabel(key, data) {
+      if (key === 'xinjiang') return '新疆';
+      if (key === 'yunnan') return '云南';
+      if (key === 'gansu') return '甘肃';
+      return data?.meta?.title?.replace(/地图导览$/, '') || key;
+    }
+
+    function renderGuideSwitch() {
+      if (guideKeys.length <= 1) {
+        guideSwitch.hidden = true;
+        return;
+      }
+
+      guideSwitch.innerHTML = guideKeys.map(key => {
+        const isActive = key === currentGuideKey;
+        const label = getGuideSwitchLabel(key, guideRegistry[key]);
+        return `<button class="guide-option${isActive ? ' active' : ''}" type="button" data-guide-key="${escapeHtml(key)}" aria-pressed="${isActive}">${escapeHtml(label)}</button>`;
+      }).join('');
+
+      guideSwitch.querySelectorAll('.guide-option').forEach(button => {
+        button.addEventListener('click', () => {
+          const nextGuideKey = button.getAttribute('data-guide-key');
+          if (!nextGuideKey || nextGuideKey === currentGuideKey) return;
+          const url = new URL(window.location.href);
+          url.searchParams.set('guide', nextGuideKey);
+          window.location.href = url.toString();
+        });
+      });
+    }
+
+    function renderGuideChrome() {
+      const fallbackTitle = '旅游地图导览';
+      const title = guideMeta.title || fallbackTitle;
+      document.title = guideMeta.documentTitle || title;
+      guideTitle.textContent = title;
+      guideSubtitle.textContent = guideMeta.subtitle || '';
+      titleBlock.setAttribute('aria-label', guideMeta.ariaLabel || title);
+      amapElement.setAttribute('aria-label', guideMeta.mapAriaLabel || `${title}高德地图`);
+      mapChipLabel.textContent = guideMeta.currentLabel || '当前日程';
+      document.documentElement.style.setProperty('--day-count', String(Math.max(days.length, 1)));
+
+      const summaryPills = Array.isArray(guideMeta.summaryPills) ? guideMeta.summaryPills : [];
+      summaryRail.innerHTML = summaryPills.map(item => `
+        <span class="pill"><b>${escapeHtml(item.value)}</b><span>${escapeHtml(item.label)}</span></span>
+      `).join('');
+    }
+
+    function renderGlobalNotes() {
+      const notes = Array.isArray(guideData.globalNotes) ? guideData.globalNotes : [];
+      globalNotesTitle.textContent = guideData.globalNotesTitle || '全局提醒';
+      globalNotesCount.textContent = notes.length;
+      globalNotes.hidden = notes.length === 0;
+      globalNoteList.innerHTML = notes.map(note => `
+        <div class="global-note"><b>${escapeHtml(note.title)}</b><span>${escapeHtml(note.text)}</span></div>
+      `).join('');
+    }
+
+    renderGuideSwitch();
+    renderGuideChrome();
+    renderGlobalNotes();
+
+    days.forEach((item, index) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'day-btn';
+      btn.setAttribute('aria-label', `${item.day} ${item.date} ${item.title}`);
+      btn.innerHTML = `<strong>${item.day}</strong><span>${item.title}</span>`;
+      btn.addEventListener('click', () => setActive(index, { focusButton: true }));
+      timeline.appendChild(btn);
+    });
+
+    function getMapLabelProfile() {
+      const zoom = typeof map?.getZoom === 'function' ? map.getZoom() : 7;
+      if (zoom <= 6.2) {
+        return {
+          className: 'zoom-distant',
+          labelScale: 0.76,
+          waypointScale: 0.82,
+          offsetScale: 1,
+          opacity: 0.9,
+          showPlaceLabels: false
+        };
+      }
+      if (zoom <= 7.4) {
+        return {
+          className: 'zoom-compact',
+          labelScale: 0.88,
+          waypointScale: 0.9,
+          offsetScale: 1,
+          opacity: 0.96,
+          showPlaceLabels: true
+        };
+      }
+      if (zoom >= 10.5) {
+        return {
+          className: 'zoom-detailed',
+          labelScale: 1.04,
+          waypointScale: 1.02,
+          offsetScale: 1,
+          opacity: 1,
+          showPlaceLabels: true
+        };
+      }
+      return {
+        className: 'zoom-normal',
+        labelScale: 1,
+        waypointScale: 1,
+        offsetScale: 1,
+        opacity: 1,
+        showPlaceLabels: true
+      };
+    }
+
+    function applyMapLabelProfile(profile = getMapLabelProfile()) {
+      document.documentElement.style.setProperty('--map-label-scale', String(profile.labelScale));
+      document.documentElement.style.setProperty('--map-waypoint-scale', String(profile.waypointScale));
+      document.documentElement.style.setProperty('--map-label-opacity', String(profile.opacity));
+    }
+
+    function markerContent(point, isActive, isMuted = false) {
+      const profile = arguments[3] || getMapLabelProfile();
+      const hiddenByZoom = !isActive && !profile.showPlaceLabels;
+      const classes = [
+        'amap-marker-bubble',
+        profile.className,
+        isActive ? 'active' : '',
+        isMuted || hiddenByZoom ? 'route-muted' : ''
+      ].filter(Boolean).join(' ');
+      return `<div class="${classes}"><span>${point.name}</span></div>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getSpotVisualBackground(detail) {
+      const tone = detail.photoTone || '#24735a';
+      const imageUrl = String(detail.spotDetailImage || '').replace(/["\\\n\r]/g, value => encodeURIComponent(value));
+      const layers = ['linear-gradient(180deg, rgba(15, 23, 42, .02), rgba(15, 23, 42, .64))'];
+      if (imageUrl) layers.push(`url("${imageUrl}") center / cover no-repeat`);
+      layers.push(tone);
+      return layers.join(', ');
+    }
+
+    function getSpotDetail(name) {
+      return scenicWaypointDetails[name] || null;
+    }
+
+    function getRouteLastWaypointIndex(dayIndex = active) {
+      const route = dailyRoutes[dayIndex];
+      return Math.max(0, (route?.points?.length || 1) - 1);
+    }
+
+    function clampWaypointIndex(index, dayIndex = active) {
+      return Math.min(getRouteLastWaypointIndex(dayIndex), Math.max(0, index));
+    }
+
+    function getActiveWaypoint() {
+      return dailyRoutes[active]?.points?.[activeWaypointIndex] || null;
+    }
+
+    function getActiveWaypointMarker() {
+      return waypointMarkers.find(marker => marker.__routeIndex === activeWaypointIndex) || null;
+    }
+
+    function getActiveRouteLegIndex() {
+      const legs = dailyRoutes[active]?.legs || [];
+      if (legs.length === 0) return -1;
+      return Math.min(legs.length - 1, Math.max(0, activeWaypointIndex - 1));
+    }
+
+    function closeSpotDetail() {
+      activeSpotName = '';
+      spotDetailCard.hidden = true;
+      spotDetailCard.removeAttribute('data-open');
+      spotDetailTitle.textContent = '';
+      spotDetailText.textContent = '';
+      spotDetailList.innerHTML = '';
+    }
+
+    function openSpotDetail(point, marker) {
+      const detail = getSpotDetail(point?.name);
+      if (!detail) {
+        closeSpotDetail();
+        return;
+      }
+
+      activeSpotName = point.name;
+      spotDetailTitle.textContent = point.name;
+      spotDetailText.textContent = detail.intro;
+      spotDetailPhotoLabel.textContent = detail.photoLabel;
+      spotDetailImage.style.background = getSpotVisualBackground(detail);
+      spotDetailMeta.innerHTML = [detail.type, detail.time].map(item => `<span>${escapeHtml(item)}</span>`).join('');
+      spotDetailList.innerHTML = detail.points.map(item => `<li>${escapeHtml(item)}</li>`).join('');
+      spotDetailCard.hidden = false;
+      spotDetailCard.setAttribute('data-open', 'true');
+
+      if (map && marker && typeof marker.getPosition === 'function') {
+        map.panTo(marker.getPosition());
+      }
+    }
+
+    function loadAmapScript() {
+      if (typeof AMap !== 'undefined') return Promise.resolve();
+      if (!AMAP_KEY) return Promise.reject(new Error('missing-amap-key'));
+
+      const existing = document.querySelector('script[data-amap-loader="true"]');
+      if (existing) {
+        return new Promise((resolve, reject) => {
+          existing.addEventListener('load', resolve, { once: true });
+          existing.addEventListener('error', reject, { once: true });
+        });
+      }
+
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.dataset.amapLoader = 'true';
+        script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(AMAP_KEY)}`;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    function getDefaultMapCenter() {
+      const positions = pinPoints
+        .map(point => point.position)
+        .filter(position => Array.isArray(position) && position.length === 2);
+      if (positions.length === 0) return [104, 35];
+
+      const totals = positions.reduce((sum, position) => ({
+        lng: sum.lng + Number(position[0]),
+        lat: sum.lat + Number(position[1])
+      }), { lng: 0, lat: 0 });
+      return [totals.lng / positions.length, totals.lat / positions.length];
+    }
+
+    async function initAmap() {
+      if (typeof AMap === 'undefined') {
+        mapStatus.textContent = '高德地图加载失败。请确认网络可访问 webapi.amap.com，且 key 已启用 Web 端 JS API。';
+        return;
+      }
+
+      const defaultMapCenter = getDefaultMapCenter();
+      map = new AMap.Map('amap', {
+        center: defaultMapCenter,
+        zoom: DEFAULT_MAP_ZOOM,
+        viewMode: '2D',
+        resizeEnable: true,
+        mapStyle: DEFAULT_MAP_STYLE
+      });
+      applyMapLabelProfile();
+      map.on('zoomend', () => refreshMapLabelsForZoom());
+      map.on('moveend', () => refreshMapLabelsForZoom());
+      map.on('zoomchange', () => refreshMapLabelsForZoom());
+      map.on('click', closeSpotDetail);
+
+      Object.entries(routeSegments).forEach(([key, path]) => {
+        const line = new AMap.Polyline({
+          path,
+          strokeColor: '#c67834',
+          strokeOpacity: 0,
+          strokeWeight: 9,
+          lineJoin: 'round',
+          zIndex: 60
+        });
+        segmentLines.set(Number(key), line);
+        map.add(line);
+      });
+
+      Object.entries(dailyRoutes).forEach(([key, route]) => {
+        const palette = routePalette[Number(key) % routePalette.length];
+        const casing = new AMap.Polyline({
+          path: route.points.map(point => point.position),
+          strokeColor: routeCasingColor,
+          strokeOpacity: 0.68,
+          strokeWeight: 9,
+          lineJoin: 'round',
+          zIndex: 45 + Number(key)
+        });
+        const line = new AMap.Polyline({
+          path: route.points.map(point => point.position),
+          strokeColor: palette.color,
+          strokeOpacity: palette.baseOpacity,
+          strokeWeight: 5,
+          lineJoin: 'round',
+          showDir: false,
+          zIndex: 55 + Number(key)
+        });
+        route.color = palette.color;
+        route.baseOpacity = palette.baseOpacity;
+        route.activeOpacity = palette.activeOpacity;
+        route.casingBaseOpacity = 0.58;
+        route.casingActiveOpacity = 0.96;
+        dailyRouteCasings.set(Number(key), casing);
+        dailyRouteLines.set(Number(key), line);
+        map.add(casing);
+        map.add(line);
+      });
+
+      pinPoints.forEach(point => {
+        const marker = new AMap.Marker({
+          position: point.position,
+          content: markerContent(point, false),
+          anchor: 'center',
+          zIndex: 80
+        });
+        marker.on('click', () => setActive(point.key, { focusButton: true }));
+        markers.set(point.key, marker);
+        map.add(marker);
+      });
+
+      try {
+        map.setFitView([...dailyRouteLines.values(), ...dailyRouteCasings.values(), ...markers.values()], false, [70, 70, 70, 70]);
+      } catch (error) {
+        map.setCenter(defaultMapCenter);
+      }
+
+      try {
+        await buildDailyNavigationRoutes();
+      } catch (error) {
+        mapStatus.textContent = '导航路线加载受限，已显示估算折线。';
+      }
+      mapStatus.classList.add('ready');
+    }
+
+    function fallbackRoutePath(points) {
+      return points.map(point => point.position);
+    }
+
+    function normalizeRoutePoint(point) {
+      if (Array.isArray(point)) return point;
+      if (typeof point === 'string') {
+        const [lng, lat] = point.split(',').map(Number);
+        return Number.isFinite(lng) && Number.isFinite(lat) ? [lng, lat] : null;
+      }
+      if (typeof point?.getLng === 'function' && typeof point?.getLat === 'function') return [point.getLng(), point.getLat()];
+      if (typeof point?.lng === 'number' && typeof point?.lat === 'number') return [point.lng, point.lat];
+      if (typeof point?.R === 'number' && typeof point?.Q === 'number') return [point.R, point.Q];
+      return null;
+    }
+
+    function parsePolyline(polyline) {
+      return String(polyline || '')
+        .split(';')
+        .map(normalizeRoutePoint)
+        .filter(Boolean);
+    }
+
+    function createDrivingPlanner() {
+      return new Promise((resolve, reject) => {
+        AMap.plugin('AMap.Driving', () => {
+          try {
+            resolve(new AMap.Driving({
+              policy: AMap.DrivingPolicy.LEAST_TIME,
+              hideMarkers: true,
+              autoFitView: false
+            }));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+    }
+
+    function toLngLat(position) {
+      return new AMap.LngLat(position[0], position[1]);
+    }
+
+    function buildRestDrivingUrl(points, callbackName) {
+      const origin = points[0].position.join(',');
+      const destination = points[points.length - 1].position.join(',');
+      const waypoints = points.slice(1, -1).map(point => point.position.join(',')).join(';');
+      const params = new URLSearchParams({
+        key: AMAP_KEY,
+        origin,
+        destination,
+        strategy: '0',
+        extensions: 'base',
+        output: 'JSON',
+        callback: callbackName
+      });
+      if (waypoints) params.set('waypoints', waypoints);
+      return `https://restapi.amap.com/v3/direction/driving?${params.toString()}`;
+    }
+
+    function waitForNavigationThrottle() {
+      return new Promise(resolve => window.setTimeout(resolve, NAVIGATION_REQUEST_DELAY));
+    }
+
+    function resolveRestNavigationPath(route) {
+      return new Promise((resolve) => {
+        const callbackName = `__travelGuideDriving_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const script = document.createElement('script');
+        const cleanup = () => {
+          window.clearTimeout(timeout);
+          script.remove();
+          delete window[callbackName];
+        };
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          resolve({ path: fallbackRoutePath(route.points), fallback: true, status: 'rest-timeout' });
+        }, 9000);
+
+        window[callbackName] = (result) => {
+          cleanup();
+          const steps = result?.route?.paths?.[0]?.steps;
+          if (result?.status !== '1' || !Array.isArray(steps)) {
+            resolve({ path: fallbackRoutePath(route.points), fallback: true, status: `rest-${result?.info || 'error'}` });
+            return;
+          }
+          const path = steps.flatMap(step => parsePolyline(step.polyline));
+          resolve({ path: path.length > 1 ? path : fallbackRoutePath(route.points), fallback: path.length <= 1, status: path.length > 1 ? 'rest-complete' : 'rest-empty' });
+        };
+
+        script.onerror = () => {
+          cleanup();
+          resolve({ path: fallbackRoutePath(route.points), fallback: true, status: 'rest-script-error' });
+        };
+        script.src = buildRestDrivingUrl(route.points, callbackName);
+        document.head.appendChild(script);
+      });
+    }
+
+    function resolveNavigationPath(route) {
+      return new Promise((resolve) => {
+        const points = route.points;
+        if (!drivingPlanner || points.length < 2) {
+          resolve({ path: fallbackRoutePath(points), fallback: true });
+          return;
+        }
+
+        const origin = toLngLat(points[0].position);
+        const destination = toLngLat(points[points.length - 1].position);
+        const waypoints = points.slice(1, -1).map(point => toLngLat(point.position));
+        const timeout = window.setTimeout(() => {
+          resolve({ path: fallbackRoutePath(points), fallback: true, status: 'timeout' });
+        }, 9000);
+
+        drivingPlanner.search(origin, destination, { waypoints }, (status, result) => {
+          window.clearTimeout(timeout);
+          const steps = result?.routes?.[0]?.steps;
+          if (status !== 'complete' || !Array.isArray(steps)) {
+            resolveRestNavigationPath(route).then(restResult => {
+              if (restResult.fallback) {
+                resolve({ ...restResult, status: `${status || 'empty'}:${restResult.status}` });
+              } else {
+                resolve(restResult);
+              }
+            });
+            return;
+          }
+          const path = steps
+            .flatMap(step => step.path || [])
+            .map(normalizeRoutePoint)
+            .filter(Boolean);
+          resolve({ path: path.length > 1 ? path : fallbackRoutePath(points), fallback: path.length <= 1, status });
+        });
+      });
+    }
+
+    async function buildDailyNavigationRoutes() {
+      drivingPlanner = await createDrivingPlanner();
+      let fallbackCount = 0;
+      const entries = Object.entries(dailyRoutes);
+      for (let index = 0; index < entries.length; index += 1) {
+        const [key, route] = entries[index];
+        const result = await resolveNavigationPath(route);
+        route.navigationPath = result.path;
+        route.usesFallbackPath = result.fallback;
+        route.navigationStatus = result.status;
+        if (result.fallback) fallbackCount += 1;
+        const line = dailyRouteLines.get(Number(key));
+        const casing = dailyRouteCasings.get(Number(key));
+        if (line) line.setPath(route.navigationPath);
+        if (casing) casing.setPath(route.navigationPath);
+        if (index < entries.length - 1) await waitForNavigationThrottle();
+      }
+
+      window.travelGuideDebug = {
+        getNavigationSummary: () => Object.entries(dailyRoutes).map(([key, route]) => ({
+          day: Number(key) + 1,
+          originalPoints: route.points.length,
+          renderedPoints: route.navigationPath?.length || 0,
+          usesFallbackPath: Boolean(route.usesFallbackPath),
+          navigationStatus: route.navigationStatus
+        })),
+        setZoomForTest: zoom => {
+          if (map) map.setZoom(zoom);
+          refreshMapLabelsForZoom();
+          return getMapLabelProfile();
+        },
+        getLabelSnapshot: () => ({
+          profile: getMapLabelProfile(),
+          bubbles: Array.from(document.querySelectorAll('.amap-marker-bubble')).map(node => ({
+            text: node.textContent.trim(),
+            className: node.className,
+            width: Math.round(node.getBoundingClientRect().width),
+            height: Math.round(node.getBoundingClientRect().height)
+          })),
+          waypoints: Array.from(document.querySelectorAll('.route-waypoint')).map(node => ({
+            text: node.textContent.trim(),
+            className: node.className,
+            width: Math.round(node.getBoundingClientRect().width),
+            height: Math.round(node.getBoundingClientRect().height)
+          }))
+        }),
+        getSpotDetailSnapshot: () => ({
+          activeSpotName,
+          open: !spotDetailCard.hidden,
+          title: spotDetailTitle.textContent.trim(),
+          scenicMarkerCount: document.querySelectorAll('.route-waypoint.spot-enabled').length
+        }),
+        getWaypointNavigationSnapshot: () => ({
+          activeDayIndex: active,
+          activeWaypointIndex,
+          activeWaypointName: getActiveWaypoint()?.name || '',
+          waypointCount: dailyRoutes[active]?.points?.length || 0,
+          activeWaypointText: document.querySelector('.route-waypoint.route-waypoint-active')?.textContent.trim() || '',
+          activeRouteDetailText: document.querySelector('.route-detail.route-detail-active')?.textContent.trim() || ''
+        })
+      };
+      document.documentElement.dataset.navigationSummary = JSON.stringify(window.travelGuideDebug.getNavigationSummary());
+
+      if (fallbackCount > 0) {
+        mapStatus.textContent = `导航路线已加载，${fallbackCount} 天的部分路段使用估算折线。`;
+      } else {
+        mapStatus.textContent = '导航路线已加载。';
+      }
+    }
+
+    function waypointContent(index, name, profile = getMapLabelProfile()) {
+      const detail = getSpotDetail(name);
+      const isActiveWaypoint = index === activeWaypointIndex;
+      const classes = ['route-waypoint', profile.className, detail ? 'spot-enabled' : '', isActiveWaypoint ? 'route-waypoint-active' : ''].filter(Boolean).join(' ');
+      const role = detail ? ' role="button" tabindex="0"' : '';
+      const dataName = detail ? ` data-spot-name="${escapeHtml(name)}"` : '';
+      const title = detail ? `点击查看 ${name} 介绍` : name;
+      const info = detail ? '<span class="route-waypoint-info" aria-hidden="true">i</span>' : '';
+      return `<div class="${classes}" title="${escapeHtml(title)}"${role}${dataName}><span class="route-waypoint-index">${index + 1}</span><span class="route-waypoint-label">${escapeHtml(name)}</span>${info}</div>`;
+    }
+
+    function pointTouchesPin(point, pin) {
+      const [lon, lat] = point.position;
+      const dx = lon - pin.position[0];
+      const dy = lat - pin.position[1];
+      return ((dx * dx) + (dy * dy)) <= PIN_TOUCH_DISTANCE;
+    }
+
+    function getNearestPinIndex(point) {
+      let nearest = -1;
+      let nearestDistance = Infinity;
+      pinPoints.forEach((pin, index) => {
+        const [lon, lat] = point.position;
+        const dx = lon - pin.position[0];
+        const dy = lat - pin.position[1];
+        const distance = (dx * dx) + (dy * dy);
+        if (distance < nearestDistance) {
+          nearest = index;
+          nearestDistance = distance;
+        }
+      });
+      return nearestDistance <= PIN_TOUCH_DISTANCE ? nearest : -1;
+    }
+
+    function getWaypointOffset(index, total, point, route) {
+      // Local nudges only; the marker anchor stays on the route lnglat.
+      const pinIndex = getNearestPinIndex(point);
+      if (pinIndex >= 0) {
+        const groupOrder = route.points
+          .slice(0, index)
+          .filter(candidate => getNearestPinIndex(candidate) === pinIndex)
+          .length;
+        const pinOffsets = [
+          { x: 0, y: -16 },
+          { x: 14, y: 8 },
+          { x: -14, y: 8 },
+          { x: 16, y: -8 },
+          { x: -16, y: -8 },
+          { x: 0, y: 16 }
+        ];
+        return pinOffsets[groupOrder % pinOffsets.length];
+      }
+
+      if (index === 0) return { x: 0, y: -14 };
+      if (index === total - 1) return { x: 0, y: 14 };
+      const offsets = [
+        { x: 14, y: 0 },
+        { x: -14, y: 0 },
+        { x: 10, y: -10 },
+        { x: -10, y: -10 },
+        { x: 10, y: 10 },
+        { x: -10, y: 10 },
+        { x: 0, y: 0 }
+      ];
+      return offsets[(index - 1) % offsets.length];
+    }
+
+    function scaleWaypointOffset(offset, profile) {
+      return {
+        x: Math.round(offset.x * profile.offsetScale),
+        y: Math.round(offset.y * profile.offsetScale)
+      };
+    }
+
+    function renderWaypointMarkers(route) {
+      if (!map) return;
+      const profile = getMapLabelProfile();
+      applyMapLabelProfile(profile);
+      waypointMarkers.forEach(marker => marker.setMap(null));
+      waypointMarkers = route.points.map((point, index) => {
+        const offset = getWaypointOffset(index, route.points.length, point, route);
+        const scaledOffset = scaleWaypointOffset(offset, profile);
+        const marker = new AMap.Marker({
+          position: point.position,
+          content: waypointContent(index, point.name, profile),
+          anchor: 'center',
+          offset: new AMap.Pixel(scaledOffset.x, scaledOffset.y),
+          zIndex: 90
+        });
+        marker.__routePoint = point;
+        marker.__routeIndex = index;
+        marker.__routeTotal = route.points.length;
+        marker.__route = route;
+        marker.on('click', () => {
+          setActiveWaypoint(index, { panMap: false });
+          openSpotDetail(point, marker);
+        });
+        marker.setMap(map);
+        return marker;
+      });
+    }
+
+    function refreshMapLabelsForZoom() {
+      if (!map) return;
+      const profile = getMapLabelProfile();
+      applyMapLabelProfile(profile);
+      const routeDetail = dailyRoutes[active];
+      pinPoints.forEach(point => {
+        const same = point.key === active || (active === 6 && point.key === 5);
+        const routePinActive = Boolean(routeDetail?.points.some(routePoint => pointTouchesPin(routePoint, point)));
+        const marker = markers.get(point.key);
+        if (marker) marker.setContent(markerContent(point, same, routePinActive, profile));
+      });
+      waypointMarkers.forEach(marker => {
+        const point = marker.__routePoint;
+        const index = marker.__routeIndex;
+        const route = marker.__route;
+        if (!point || !route) return;
+        const offset = getWaypointOffset(index, marker.__routeTotal, point, route);
+        const scaledOffset = scaleWaypointOffset(offset, profile);
+        marker.setContent(waypointContent(index, point.name, profile));
+        marker.setOffset(new AMap.Pixel(scaledOffset.x, scaledOffset.y));
+      });
+    }
+
+    function renderRouteDetails() {
+      const detail = dailyRoutes[active];
+      if (!detail) {
+        routeDetailList.innerHTML = '<div class="route-detail"><div class="route-detail-main">暂无详细路程拆解</div></div>';
+        return;
+      }
+
+      const activeLegIndex = getActiveRouteLegIndex();
+      routeDetailList.innerHTML = detail.legs.map((leg, index) => `
+        <div class="route-detail${index === activeLegIndex ? ' route-detail-active' : ''}">
+          <span class="route-detail-index">${index + 1}</span>
+          <div class="route-detail-main">
+            <div class="route-detail-title">
+              <span>${leg.from} → ${leg.to}</span>
+            </div>
+            <div class="route-detail-meta">${leg.meta}</div>
+            <div class="route-detail-note">${leg.note}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function moveActiveDay(delta) {
+      const next = Math.min(days.length - 1, Math.max(0, active + delta));
+      setActive(next, { focusButton: true });
+    }
+
+    function setActiveWaypoint(index, options = {}) {
+      activeWaypointIndex = clampWaypointIndex(index);
+      refreshMapLabelsForZoom();
+      renderRouteDetails();
+
+      if (options.panMap && map) {
+        const marker = getActiveWaypointMarker();
+        const waypoint = getActiveWaypoint();
+        if (marker && typeof marker.getPosition === 'function') {
+          map.panTo(marker.getPosition());
+        } else if (waypoint?.position) {
+          map.panTo(waypoint.position);
+        }
+      }
+    }
+
+    function moveActiveWaypoint(delta) {
+      const nextWaypointIndex = activeWaypointIndex + delta;
+      const lastWaypointIndex = getRouteLastWaypointIndex(active);
+
+      if (nextWaypointIndex >= 0 && nextWaypointIndex <= lastWaypointIndex) {
+        setActiveWaypoint(nextWaypointIndex, { panMap: true });
+        return;
+      }
+
+      if (delta > 0 && active < days.length - 1) {
+        const nextDay = active + 1;
+        setActive(nextDay, { focusButton: true, fitMap: false, panToWaypoint: true, targetWaypointIndex: 0 });
+      } else if (delta < 0 && active > 0) {
+        const nextDay = active - 1;
+        setActive(nextDay, { focusButton: true, fitMap: false, panToWaypoint: true, targetWaypointIndex: getRouteLastWaypointIndex(nextDay) });
+      }
+    }
+
+    function handleKeyboardNavigation(event) {
+      const tagName = event.target?.tagName;
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || event.target?.isContentEditable) return;
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        moveActiveWaypoint(-1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        moveActiveWaypoint(1);
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        setActive(0, { focusButton: true, fitMap: false, panToWaypoint: true, targetWaypointIndex: 0 });
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        const lastDay = days.length - 1;
+        setActive(lastDay, { focusButton: true, fitMap: false, panToWaypoint: true, targetWaypointIndex: getRouteLastWaypointIndex(lastDay) });
+      }
+    }
+
+    function adjustMapZoom(delta) {
+      if (!map || typeof map.getZoom !== 'function' || typeof map.setZoom !== 'function') return;
+      map.setZoom(map.getZoom() + delta);
+      refreshMapLabelsForZoom();
+    }
+
+    function setActive(index, options = {}) {
+      const previousActive = active;
+      active = Math.min(days.length - 1, Math.max(0, index));
+      if (previousActive !== active) closeSpotDetail();
+      activeWaypointIndex = clampWaypointIndex(Number.isInteger(options.targetWaypointIndex) ? options.targetWaypointIndex : 0, active);
+      const shouldFocusButton = Boolean(options.focusButton);
+      const shouldFitMap = options.fitMap !== false;
+      const shouldPanToWaypoint = Boolean(options.panToWaypoint);
+      const item = days[active];
+      document.querySelectorAll('.day-btn').forEach((btn, i) => {
+        const isActive = i === active;
+        btn.classList.toggle('active', isActive);
+        if (isActive) {
+          btn.setAttribute('aria-current', 'step');
+        } else {
+          btn.removeAttribute('aria-current');
+        }
+        if (isActive && shouldFocusButton) btn.focus({ preventScroll: true });
+      });
+      segmentLines.forEach((line, key) => {
+        line.setOptions({
+          strokeOpacity: 0,
+          strokeWeight: key === item.segment ? 10 : 9
+        });
+      });
+      dailyRouteLines.forEach((line, key) => {
+        const route = dailyRoutes[key];
+        line.setOptions({
+          strokeOpacity: key === active ? route.activeOpacity : route.baseOpacity,
+          strokeWeight: key === active ? 8 : 5,
+          showDir: key === active,
+          zIndex: key === active ? 90 : 55 + key
+        });
+      });
+      dailyRouteCasings.forEach((line, key) => {
+        const route = dailyRoutes[key];
+        line.setOptions({
+          strokeOpacity: key === active ? route.casingActiveOpacity : route.casingBaseOpacity,
+          strokeWeight: key === active ? 13 : 9,
+          zIndex: key === active ? 82 : 45 + key
+        });
+      });
+      const routeDetail = dailyRoutes[active];
+      const profile = getMapLabelProfile();
+      applyMapLabelProfile(profile);
+      pinPoints.forEach(point => {
+        const same = point.key === active || (active === 6 && point.key === 5);
+        const routePinActive = Boolean(routeDetail?.points.some(routePoint => pointTouchesPin(routePoint, point)));
+        const marker = markers.get(point.key);
+        if (marker) marker.setContent(markerContent(point, same, routePinActive, profile));
+      });
+      if (routeDetail) {
+        renderWaypointMarkers(routeDetail);
+      }
+      if (map && shouldFitMap) {
+        const overlays = [];
+        const activeLine = dailyRouteLines.get(active);
+        if (activeLine) overlays.push(activeLine);
+        waypointMarkers.forEach(marker => overlays.push(marker));
+        if (overlays.length > 0) {
+          map.setFitView(overlays, false, [90, 90, 90, 90]);
+        } else {
+          const activePoint = pinPoints.find(point => point.key === active || (active === 6 && point.key === 5));
+          if (activePoint) map.panTo(activePoint.position);
+        }
+      }
+      refreshMapLabelsForZoom();
+      if (shouldPanToWaypoint) setActiveWaypoint(activeWaypointIndex, { panMap: true });
+
+      document.getElementById('dayKicker').textContent = `${item.day} 地图导览`;
+      document.getElementById('dayTitle').textContent = item.title;
+      document.getElementById('dayDate').textContent = item.date;
+      mapChipLabel.textContent = `${item.day} / ${item.date}`;
+      mapChipTitle.textContent = routeDetail ? `${item.route.join(' → ')} · ${routeDetail.distance} · ${routeDetail.duration}` : item.route.join(' → ');
+      document.getElementById('routeLine').innerHTML = item.route.map(stop => `<strong>${stop}</strong>`).join('<span>→</span>');
+      stageList.innerHTML = item.route.map((stop, stopIndex) => `
+        <div class="stage-item">
+          <span class="stage-index">${stopIndex + 1}</span>
+          <span class="stage-name">${stop}</span>
+        </div>
+      `).join('');
+      document.getElementById('stay').textContent = item.stay;
+      document.getElementById('pace').textContent = item.pace;
+      document.getElementById('highlight').textContent = item.highlight;
+      document.getElementById('drive').textContent = item.drive;
+      renderRouteDetails();
+      document.getElementById('tips').innerHTML = item.tips.map(tip => `<li>${tip}</li>`).join('');
+      document.getElementById('warning').textContent = item.warning;
+      const url = `https://uri.amap.com/marker?position=${item.point.lon},${item.point.lat}&name=${encodeURIComponent(item.point.name)}`;
+      document.getElementById('mapLink').href = url;
+      document.getElementById('mapLink').textContent = `打开 ${item.point.name}`;
+    }
+
+    async function startGuide() {
+      if (!days.length) {
+        mapStatus.textContent = '未找到行程数据。请先加载对应城市的 TRAVEL_GUIDE_DATA 数据文件。';
+        return;
+      }
+
+      setActive(0, { fitMap: false });
+      document.addEventListener('keydown', handleKeyboardNavigation);
+      zoomInButton.addEventListener('click', () => adjustMapZoom(1));
+      zoomOutButton.addEventListener('click', () => adjustMapZoom(-1));
+      spotDetailClose.addEventListener('click', closeSpotDetail);
+      try {
+        await loadAmapScript();
+      } catch (error) {
+        mapStatus.textContent = '高德地图脚本加载失败。请确认网络可访问 webapi.amap.com，且数据文件中已配置 amap.key。';
+      }
+      await initAmap();
+      setActive(active, { fitMap: false });
+    }
+
+    startGuide();
+  </script>
+</body>
+</html>
