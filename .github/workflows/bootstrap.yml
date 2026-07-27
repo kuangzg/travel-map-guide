@@ -1,0 +1,69 @@
+name: Bootstrap and deploy travel guide
+
+on:
+  push:
+    paths:
+      - '.bootstrap/**'
+      - '.github/workflows/bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild website source
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '.pages-site/\nsite.zip\nsite.zip.b64\n' >> .git/info/exclude
+          cat .bootstrap/site.part.* > site.zip.b64
+          base64 --decode site.zip.b64 > site.zip
+          rm -rf .pages-site /tmp/travel-map-guide-unpack
+          mkdir -p .pages-site /tmp/travel-map-guide-unpack
+          unzip -q site.zip -d /tmp/travel-map-guide-unpack
+          cp -a /tmp/travel-map-guide-unpack/travel-map-guide-repo/. .pages-site/
+          sed -i 's#app1905.github.io#kuangzg.github.io#g' .pages-site/README.md
+
+      - name: Commit website source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a .pages-site/. .
+          rm -rf .bootstrap site.zip site.zip.b64 .github/workflows/bootstrap.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m 'Publish travel map guide source'
+            git push
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .pages-site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
