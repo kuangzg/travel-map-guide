@@ -37,7 +37,14 @@ jobs:
         run: |
           set -euo pipefail
           printf '.pages-site/\nsite.zip\nsite.zip.b64\n' >> .git/info/exclude
-          cat .bootstrap/site.part.* | tr -d '\r\n\t ' > site.zip.b64
+          cat \
+            .bootstrap/site.part.00 \
+            .bootstrap/site.part.01 \
+            .bootstrap/site.part.02 \
+            .bootstrap/site.part.03a \
+            .bootstrap/site.part.03b \
+            .bootstrap/site.part.04 \
+            | tr -d '\r\n\t ' > site.zip.b64
           test "$(wc -c < site.zip.b64)" -eq 56416
 
       - name: Verify uploaded chunks
