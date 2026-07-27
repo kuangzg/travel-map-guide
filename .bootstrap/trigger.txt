@@ -1,1 +1,1 @@
-Trigger the one-time source restoration workflow.
+Trigger the verified one-time source restoration workflow.
