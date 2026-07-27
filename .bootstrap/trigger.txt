@@ -1,1 +1,1 @@
-Trigger source-only commit and Pages deployment.
+Trigger source restoration before Pages deployment.
