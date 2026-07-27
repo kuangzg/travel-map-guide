@@ -1,1 +1,1 @@
-Trigger the verified one-time source restoration workflow.
+Trigger source restoration with verified split archive blocks.
