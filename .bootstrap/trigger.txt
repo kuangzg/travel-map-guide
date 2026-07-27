@@ -1,1 +1,1 @@
-Trigger source restoration with verified split archive blocks.
+Trigger source-only commit and Pages deployment.
