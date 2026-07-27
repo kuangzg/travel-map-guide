@@ -32,13 +32,32 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Rebuild website source
+      - name: Assemble uploaded archive
         shell: bash
         run: |
           set -euo pipefail
           printf '.pages-site/\nsite.zip\nsite.zip.b64\n' >> .git/info/exclude
-          cat .bootstrap/site.part.* > site.zip.b64
-          base64 --decode site.zip.b64 > site.zip
+          cat .bootstrap/site.part.* | tr -d '\r\n\t ' > site.zip.b64
+          test "$(wc -c < site.zip.b64)" -eq 56416
+
+      - name: Verify uploaded chunks
+        shell: bash
+        run: echo '301adf225df61c4d0cdcba2e4882cb37961aea313affbc2978c7e03e558b0ef3  site.zip.b64' | sha256sum -c -
+
+      - name: Decode archive
+        shell: bash
+        run: base64 --decode site.zip.b64 > site.zip
+
+      - name: Verify ZIP archive
+        shell: bash
+        run: |
+          echo 'e4f49ebe2158906d345f9cc96e10fde556e60a3f1b059de02822575f8369ecf7  site.zip' | sha256sum -c -
+          unzip -t site.zip
+
+      - name: Extract website source
+        shell: bash
+        run: |
+          set -euo pipefail
           rm -rf .pages-site /tmp/travel-map-guide-unpack
           mkdir -p .pages-site /tmp/travel-map-guide-unpack
           unzip -q site.zip -d /tmp/travel-map-guide-unpack
